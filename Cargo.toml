@@ -1,0 +1,8 @@
+[package]
+name = "machine_numeral_identification_and_sorting_task"
+version = "0.0.1"
+authors = ["Zack M. Davis <code@zackmdavis.net>"]
+
+[dependencies]
+mnist = "0.4"
+rusty-machine = "0.5"
