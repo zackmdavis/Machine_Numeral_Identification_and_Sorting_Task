@@ -7,7 +7,8 @@ use std::path::Path;
 use std::ops::Range;
 
 use mnist::{Mnist, MnistBuilder};
-use rusty_machine::learning::naive_bayes::{self, NaiveBayes};
+use rusty_machine::learning::svm::SVM;
+use rusty_machine::learning::toolkit::kernel::HyperTan;
 use rusty_machine::prelude::*;
 
 
@@ -27,7 +28,6 @@ struct Digit {
 struct MnistData(Mnist);
 
 impl MnistData {
-    #[cfg(XXX_TODO_FIXME_label_format)]
     fn digit(&self, set: Set, index: usize) -> Digit {
         let raw_range = 784*index..784*(index+1); // 784 = 28²
         let raw_image = match set {
@@ -36,9 +36,6 @@ impl MnistData {
             Set::Test => &self.0.tst_img[raw_range]
         };
         let image = Matrix::new(28, 28, raw_image);
-        // XXX TODO FIXME: this assumes "digit" label format, but it looks like
-        // we actually want one-hot vectors to feed into rusty-machine; convert
-        // here?
         let label = match set {
             Set::Training => self.0.trn_lbl[index],
             Set::Validation => self.0.val_lbl[index],
@@ -57,14 +54,12 @@ impl MnistData {
         Matrix::new(range.len(), 784, raw_images)
     }
 
-    fn label_matrix(&self, set: Set, range: Range<usize>) -> Matrix<u8> {
-        let raw_range = 10*range.start..10*range.end; // 784 = 28²
-        let raw_labels = match set {
-            Set::Training => &self.0.trn_lbl[raw_range],
-            Set::Validation => &self.0.val_lbl[raw_range],
-            Set::Test => &self.0.tst_lbl[raw_range]
-        };
-        Matrix::new(range.len(), 10, raw_labels)
+    fn labels(&self, set: Set, range: Range<usize>) -> Vector<u8> {
+        match set {
+            Set::Training => &self.0.trn_lbl[range],
+            Set::Validation => &self.0.val_lbl[range],
+            Set::Test => &self.0.tst_lbl[range]
+        }.into()
     }
 }
 
@@ -77,7 +72,6 @@ fn get_data() -> Result<MnistData, Box<Error>> {
     let parent_directory = working_directory.parent()
         .expect("should compute parent directory");
     let mnist = MnistBuilder::new()
-        .label_format_one_hot()
         .training_set_length(10000)
         .validation_set_length(10000)
         .test_set_length(1000)
@@ -91,19 +85,19 @@ fn main() {
     let data = get_data().expect("should get data");
 
     let training_data_u8 = data.image_matrix(Set::Training, 0..10000);
-    let training_targets_u8 = data.label_matrix(Set::Training, 0..10000);
+    let training_targets_u8 = data.labels(Set::Training, 0..10000);
 
-    let validation_data_u8 = data.image_matrix(Set::Validation, 0..10000);
-    let validation_targets_u8 = data.label_matrix(Set::Validation, 0..10000);
+    let validation_data_u8 = data.image_matrix(Set::Validation, 0..1000);
+    let validation_targets_u8 = data.labels(Set::Validation, 0..1000);
 
     let training_data = Matrix::new(training_data_u8.rows(), training_data_u8.cols(), training_data_u8.into_vec().iter().map(|e| *e as f64).collect::<Vec<_>>());
-    let training_targets = Matrix::new(training_targets_u8.rows(), training_targets_u8.cols(), training_targets_u8.into_vec().iter().map(|e| *e as f64).collect::<Vec<_>>());
+    let training_targets = training_targets_u8.into_vec().iter().map(|e| *e as f64).collect::<Vec<_>>();
 
     let validation_data = Matrix::new(validation_data_u8.rows(), validation_data_u8.cols(), validation_data_u8.into_vec().iter().map(|e| *e as f64).collect::<Vec<_>>());
-    let validation_targets = Matrix::new(validation_targets_u8.rows(), validation_targets_u8.cols(), validation_targets_u8.into_vec().iter().map(|e| *e as f64).collect::<Vec<_>>());
+    let validation_targets = validation_targets_u8.into_vec().iter().map(|e| *e as f64).collect::<Vec<_>>();
 
-    let mut model = NaiveBayes::<naive_bayes::Gaussian>::new();
-    model.train(&training_data, &training_targets)
+    let mut model = SVM::new(HyperTan::new(100., 0.), 0.3);
+    model.train(&training_data, &training_targets.into())
         .expect("couldn't train?!");
 
     println!("Trained up!");
@@ -112,11 +106,11 @@ fn main() {
         .expect("couldn't validate?!");
 
     let mut hits = 0;
-    for (digit, predicted) in validation_targets.iter_rows().zip(predictions.iter_rows()) {
+    for (digit, predicted) in validation_targets.iter().zip(predictions.iter()) {
         if digit == predicted {
             hits += 1;
         }
     }
-    println!("Accuracy: {}/{} = {:.1}%", hits, 10000., f64::from(hits)/10000. * 100.);
+    println!("Accuracy: {}/{} = {:.1}%", hits, 1000., f64::from(hits)/1000. * 100.);
 
 }
